@@ -19,27 +19,17 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Top bar: progress + skip button
-            HStack(alignment: .center) {
-                HStack(spacing: 4) {
-                    ForEach(0..<totalSteps, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(index <= currentStep ? Color.accentColor : Color.gray.opacity(0.2))
-                            .frame(height: 4)
-                    }
+            // Progress bar
+            HStack(spacing: 4) {
+                ForEach(0..<totalSteps, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(index <= currentStep ? Color.accentColor : Color.gray.opacity(0.2))
+                        .frame(height: 4)
                 }
-
-                Spacer().frame(width: 16)
-
-                Button("Skip") {
-                    complete()
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .font(.system(size: 13))
             }
-            .padding(.horizontal, 40)
-            .padding(.top, 24)
+            .padding(.horizontal, 50)
+            .padding(.top, 16)
+            .padding(.bottom, 4)
 
             // Content
             Group {

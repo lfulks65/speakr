@@ -8,6 +8,38 @@ import HotkeyService
 import TextOutput
 import Settings
 
+// MARK: - Models
+
+/// A single transcription entry with timestamp.
+public struct TranscriptionEntry: Identifiable, Codable {
+    public let id: UUID
+    public let text: String
+    public let date: Date
+    public let durationSeconds: Double
+    public let appName: String?
+
+    public init(text: String, durationSeconds: Double, appName: String?) {
+        self.id = UUID()
+        self.text = text
+        self.date = Date()
+        self.durationSeconds = durationSeconds
+        self.appName = appName
+    }
+}
+
+/// A user-defined text expansion snippet.
+public struct Snippet: Identifiable, Codable, Equatable {
+    public let id: UUID
+    public var trigger: String
+    public var expansion: String
+
+    public init(trigger: String, expansion: String) {
+        self.id = UUID()
+        self.trigger = trigger
+        self.expansion = expansion
+    }
+}
+
 /// Global application state managed via SwiftUI's @Observable
 @available(macOS 14.0, *)
 @Observable
@@ -27,6 +59,15 @@ public final class AppState {
     public var currentStatusMessage = "Ready"
     public var lastTranscription: String?
     public var showAboutPanel: Bool = false
+
+    /// Running history of all transcriptions this session (persisted to disk).
+    public var transcriptionHistory: [TranscriptionEntry] = []
+
+    /// User-defined text snippets: when a trigger word appears in the
+    /// transcription output it gets replaced with the expansion text.
+    public var snippets: [Snippet] = [] {
+        didSet { saveSnippets() }
+    }
 
     // MARK: - Menu Bar Controller (injected after init)
     weak var menuBarController: MenuBarController?
@@ -68,6 +109,7 @@ public final class AppState {
         self.textOutput = TextOutput()
         wfLog("  TextOutput done")
 
+        loadPersistedData()
         setupHotkeyHandler()
         wfLog("▶ AppState.init() complete — scheduling deferred startup task")
 
@@ -76,17 +118,24 @@ public final class AppState {
             try? await Task.sleep(for: .milliseconds(200))
             wfLog("▶ Deferred startup task: calling hotkeyService.startListening()...")
             hotkeyService.startListening()
-            wfLog("▶ Deferred startup task: startListening() done, loading model...")
-            await loadInitialModel()
-            inlineTrigger.start(with: self)
-            // Request Accessibility permission on first launch (or whenever it's missing).
-            // prompt:true shows the system dialog and adds the app to the Accessibility
-            // list, which is required for both text pasting and the floating mic button.
-            requestAccessibilityIfNeeded()
-            wfLog("▶ Deferred startup task: complete")
+            wfLog("▶ Deferred startup task: complete (model load deferred until permissions granted)")
         }
     }
-    
+
+    /// Called by PermissionsGateView once all required permissions are granted.
+    /// Loads the Whisper model and starts the inline trigger service.
+    public func onPermissionsGranted() {
+        guard !didFinishPermissions else { return }
+        didFinishPermissions = true
+        wfLog("▶ onPermissionsGranted — loading model + starting inline trigger")
+        Task {
+            await loadInitialModel()
+            inlineTrigger.start(with: self)
+            wfLog("▶ onPermissionsGranted complete")
+        }
+    }
+    private var didFinishPermissions = false
+
     // MARK: - Public Methods
     
     /// Toggle recording state (called by hotkey)
@@ -159,11 +208,21 @@ public final class AppState {
             )
             wfLog("  transcribe() done in \(String(format: "%.2f", result.processingTime))s")
             
-            lastTranscription = result.text
+            let finalText = applySnippets(to: result.text)
+            lastTranscription = finalText
             isTranscribing = false
             currentStatusMessage = "Done (\(String(format: "%.1f", result.processingTime))s)"
             menuBarController?.setIdle()
-            await outputTranscription(result.text)
+
+            let entry = TranscriptionEntry(
+                text: finalText,
+                durationSeconds: result.processingTime,
+                appName: recordingTargetApp?.localizedName
+            )
+            transcriptionHistory.insert(entry, at: 0)
+            saveHistory()
+
+            await outputTranscription(finalText)
         } catch {
             wfLog("[ERROR] " + "  transcribe error: \(error)")
             isTranscribing = false
@@ -320,8 +379,61 @@ public final class AppState {
         wfLog("  postCmdVToFrontmost: ⌘V posted to HID tap")
     }
     
-    private func playSound(named: String) async {
-        // Placeholder for sound effects
-        // Would use NSSound or AudioServicesPlaySystemSound in full implementation
+    // MARK: - Snippet Expansion
+
+    /// Replaces trigger words in the transcribed text with their expansions.
+    /// Matching is case-insensitive and whole-word.
+    private func applySnippets(to text: String) -> String {
+        guard !snippets.isEmpty else { return text }
+        var result = text
+        for snippet in snippets {
+            guard !snippet.trigger.isEmpty else { continue }
+            let pattern = "\\b\(NSRegularExpression.escapedPattern(for: snippet.trigger))\\b"
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+                result = regex.stringByReplacingMatches(
+                    in: result, range: NSRange(result.startIndex..., in: result),
+                    withTemplate: NSRegularExpression.escapedTemplate(for: snippet.expansion)
+                )
+            }
+        }
+        return result
+    }
+
+    // MARK: - Persistence
+
+    private static let historyKey = "speakr_history"
+    private static let snippetsKey = "speakr_snippets"
+
+    func loadPersistedData() {
+        if let data = UserDefaults.standard.data(forKey: Self.historyKey),
+           let entries = try? JSONDecoder().decode([TranscriptionEntry].self, from: data) {
+            transcriptionHistory = entries
+        }
+        if let data = UserDefaults.standard.data(forKey: Self.snippetsKey),
+           let items = try? JSONDecoder().decode([Snippet].self, from: data) {
+            snippets = items
+        }
+    }
+
+    private func saveHistory() {
+        if let data = try? JSONEncoder().encode(transcriptionHistory) {
+            UserDefaults.standard.set(data, forKey: Self.historyKey)
+        }
+    }
+
+    private func saveSnippets() {
+        if let data = try? JSONEncoder().encode(snippets) {
+            UserDefaults.standard.set(data, forKey: Self.snippetsKey)
+        }
+    }
+
+    public func deleteHistoryEntry(_ entry: TranscriptionEntry) {
+        transcriptionHistory.removeAll { $0.id == entry.id }
+        saveHistory()
+    }
+
+    public func clearHistory() {
+        transcriptionHistory.removeAll()
+        saveHistory()
     }
 }

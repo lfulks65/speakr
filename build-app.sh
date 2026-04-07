@@ -54,6 +54,12 @@ cp -R "${BUNDLE_DIR}" "/Applications/${APP_BUNDLE}"
 echo "▶ Resetting stored settings to apply new defaults..."
 defaults delete com.speakr.app 2>/dev/null || true
 
+# Reset TCC microphone permission so the system re-prompts after re-codesign.
+# This requires Full Disk Access; if it fails (expected for most users), the
+# system will still prompt on first use if the signature changed.
+echo "▶ Resetting microphone permission (may require Full Disk Access)..."
+tccutil reset Microphone com.speakr.app 2>/dev/null || true
+
 echo ""
 echo "✅ Done! Installed to /Applications/${APP_BUNDLE}"
 echo ""

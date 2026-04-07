@@ -27,13 +27,12 @@ struct SpeakrApp: App {
         // makeMainMenu) to re-run on every state change. Keep this side-effect-free.
 
         WindowGroup("Speakr", id: "main-window") {
-            MainWindowView()
+            PermissionsGateView()
                 .environment(appState)
                 .environment(menuBarController)
         }
         .defaultPosition(.center)
         .defaultSize(width: 800, height: 600)
-        .windowResizability(.contentSize)
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandGroup(replacing: .appInfo) {
