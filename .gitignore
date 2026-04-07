@@ -1,0 +1,74 @@
+# Build artifacts
+*.dmg
+
+# Xcode
+.DS_Store
+*/build/*
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+xcuserdata
+profile
+*.moved-aside
+DerivedData
+.idea/
+*.hmap
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
+*.xcodeproj
+*.xcworkspace
+
+# Whisper Models (large binary files)
+*.bin
+*.mlmodelc/
+models/*.bin
+Resources/Models/*.bin
+Resources/Models/*.mlmodelc
+
+# Audio cache
+Cache/
+*.wav
+*.m4a
+*.mp3
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# SwiftPM build artifacts
+.swiftpm/
+
+# Test outputs
+*.log
+test_output/
+coverage/
+
+# macOS
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# App specific
+WisprFlow.app
+*.app
+dist/
+release/

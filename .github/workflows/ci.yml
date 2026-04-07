@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+env:
+  SWIFT_VERSION: '5.9'
+  DEVELOPER_DIR: /Applications/Xcode_15.0.app/Contents/Developer
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      
+    - name: Setup Swift
+      uses: swift-actions/setup-swift@v1
+      with:
+        swift-version: ${{ env.SWIFT_VERSION }}
+    
+    - name: Verify Swift Version
+      run: swift --version
+    
+    - name: Build Debug
+      run: swift build --verbose
+    
+    - name: Build Release
+      run: swift build -c release --verbose
+    
+    - name: Run Tests
+      run: swift test --enable-code-coverage --verbose
+    
+    - name: Upload Coverage
+      uses: codecov/codecov-action@v3
+      with:
+        files: .build/debug/*Tests.xctest/Contents/Resources/*.profdata
+        fail_ci_if_error: false
+
+  lint:
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Install SwiftLint
+      run: brew install swiftlint
+    
+    - name: Run SwiftLint
+      run: swiftlint lint --reporter github-actions-logging
+      continue-on-error: true
+
+  build-macos-app:
+    runs-on: macos-14
+    needs: [build-and-test]
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup Swift
+      uses: swift-actions/setup-swift@v1
+      with:
+        swift-version: ${{ env.SWIFT_VERSION }}
+    
+    - name: Build Universal Binary
+      run: |
+        swift build -c release --arch arm64 --arch x86_64
+    
+    - name: Create App Bundle
+      run: |
+        mkdir -p WisprFlow.app/Contents/MacOS
+        cp .build/apple/Products/Release/WisprFlow WisprFlow.app/Contents/MacOS/
+        cat > WisprFlow.app/Contents/Info.plist << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>WisprFlow</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.wisprflow.app</string>
+            <key>CFBundleName</key>
+            <string>WisprFlow</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>0.1.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>14.0</string>
+            <key>NSMicrophoneUsageDescription</key>
+            <string>WisprFlow requires microphone access to transcribe speech.</string>
+        </dict>
+        </plist>
+        EOF
+    
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: WisprFlow-macOS
+        path: WisprFlow.app
+        retention-days: 7
