@@ -31,8 +31,9 @@ mkdir -p "${BUNDLE_DIR}/Contents/Resources"
 # Copy binary
 cp "${BINARY}" "${BUNDLE_DIR}/Contents/MacOS/${APP_NAME}"
 
-# Copy Info.plist
+# Copy Info.plist and app icon
 cp "Resources/Info.plist" "${BUNDLE_DIR}/Contents/Info.plist"
+cp "Resources/AppIcon.icns" "${BUNDLE_DIR}/Contents/Resources/AppIcon.icns"
 
 # Ad-hoc codesign with hardened runtime so Gatekeeper is less aggressive.
 echo "▶ Codesigning (ad-hoc, hardened runtime)..."
