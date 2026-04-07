@@ -49,6 +49,7 @@ xattr -cr "${BUNDLE_DIR}"
 echo "▶ Installing to /Applications..."
 pkill -x "${APP_NAME}" 2>/dev/null || true
 sleep 0.5
+rm -rf "/Applications/${APP_BUNDLE}"
 cp -R "${BUNDLE_DIR}" "/Applications/${APP_BUNDLE}"
 
 # Reset app settings so updated defaults (autoPaste=true, etc.) take effect

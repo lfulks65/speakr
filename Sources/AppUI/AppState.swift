@@ -123,12 +123,14 @@ public final class AppState {
     }
 
     /// Called by PermissionsGateView once all required permissions are granted.
-    /// Loads the Whisper model and starts the inline trigger service.
+    /// Pre-warms the audio engine, loads the Whisper model, and starts the
+    /// inline trigger service.
     public func onPermissionsGranted() {
         guard !didFinishPermissions else { return }
         didFinishPermissions = true
-        wfLog("▶ onPermissionsGranted — loading model + starting inline trigger")
+        wfLog("▶ onPermissionsGranted — warming up audio + loading model")
         Task {
+            await audioCapture.warmUp()
             await loadInitialModel()
             inlineTrigger.start(with: self)
             wfLog("▶ onPermissionsGranted complete")
@@ -152,21 +154,9 @@ public final class AppState {
     /// Start recording audio
     public func startRecording() async {
         wfLog("▶ startRecording() begin")
-        // Capture the frontmost app now, before any Speakr window can steal focus.
         recordingTargetApp = NSWorkspace.shared.frontmostApplication
         wfLog("  target app: \(recordingTargetApp?.localizedName ?? "none")")
         do {
-            wfLog("  requesting mic permission...")
-            currentStatusMessage = "Requesting microphone permission..."
-            let hasPermission = await audioCapture.requestPermission()
-            wfLog("  mic permission: \(hasPermission)")
-            
-            guard hasPermission else {
-                currentStatusMessage = "Microphone permission denied"
-                menuBarController?.setError("Mic permission denied")
-                return
-            }
-            
             wfLog("  calling audioCapture.startRecording()...")
             currentStatusMessage = "Recording..."
             let url = try await audioCapture.startRecording()
@@ -208,11 +198,28 @@ public final class AppState {
             )
             wfLog("  transcribe() done in \(String(format: "%.2f", result.processingTime))s")
             
-            let finalText = applySnippets(to: result.text)
-            lastTranscription = finalText
+            let rawText = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lower = rawText.lowercased()
+            let isBlank = rawText.isEmpty
+                || rawText.count < 2
+                || lower.contains("[blank_audio]")
+                || lower.contains("[blank audio]")
+                || lower.contains("(blank_audio)")
+                || lower.contains("(blank audio)")
+                || lower.contains("[silence]")
+
             isTranscribing = false
-            currentStatusMessage = "Done (\(String(format: "%.1f", result.processingTime))s)"
             menuBarController?.setIdle()
+
+            if isBlank {
+                wfLog("  transcription was blank/silence — skipping output")
+                currentStatusMessage = "No speech detected"
+                return
+            }
+
+            let finalText = applySnippets(to: rawText)
+            lastTranscription = finalText
+            currentStatusMessage = "Done (\(String(format: "%.1f", result.processingTime))s)"
 
             let entry = TranscriptionEntry(
                 text: finalText,

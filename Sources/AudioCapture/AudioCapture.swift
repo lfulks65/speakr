@@ -104,7 +104,13 @@ public actor AudioCapture: @preconcurrency AudioCaptureProtocol {
     }
     
     // MARK: - Public Methods
-    
+
+    /// Pre-warms the audio subsystem. Called after permissions are granted.
+    public func warmUp() {
+        _ = audioEngine.inputNode
+        NSLog("▶ AudioCapture.warmUp() — engine input node touched")
+    }
+
     public func requestPermission() async -> Bool {
         NSLog("▶ requestPermission() begin")
         let result = await withCheckedContinuation { continuation in

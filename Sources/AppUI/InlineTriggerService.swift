@@ -181,12 +181,21 @@ final class InlineTriggerService {
 // MARK: - SwiftUI Button
 
 /// A small circular mic button that lives inside the floating non‑activating panel.
+/// Shows a "charging up" ring animation when recording starts so users
+/// instinctively wait a beat before speaking.
 @available(macOS 14.0, *)
 private struct InlineMicButtonView: View {
     var appState: AppState
     var onTap: @MainActor () -> Void
 
+    @State private var chargeProgress: CGFloat = 0
+    @State private var isCharging = false
+    @State private var chargeComplete = false
+
+    private let chargeDuration: Double = 1.2
+
     private var glowColor: Color {
+        if isCharging { return .yellow }
         if appState.isRecording { return .red }
         if appState.isTranscribing { return .orange }
         return .cyan
@@ -197,32 +206,78 @@ private struct InlineMicButtonView: View {
             onTap()
         } label: {
             ZStack {
-                // Outer neon glow
-                Circle()
-                    .stroke(glowColor, lineWidth: 1.5)
-                    .shadow(color: glowColor.opacity(0.9), radius: 6, x: 0, y: 0)
-                    .shadow(color: glowColor.opacity(0.5), radius: 12, x: 0, y: 0)
+                if isCharging {
+                    // Background ring (track)
+                    Circle()
+                        .stroke(glowColor.opacity(0.2), lineWidth: 2.5)
 
-                // Glass-like fill
-                Circle()
-                    .fill(glowColor.opacity(0.08))
+                    // Animated charge ring
+                    Circle()
+                        .trim(from: 0, to: chargeProgress)
+                        .stroke(
+                            glowColor,
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .shadow(color: glowColor.opacity(0.9), radius: 6)
+                        .shadow(color: glowColor.opacity(0.5), radius: 12)
 
-                if appState.isTranscribing {
-                    ProgressView()
-                        .progressViewStyle(.circular)
-                        .scaleEffect(0.5)
-                        .tint(glowColor)
-                } else {
-                    Image(systemName: appState.isRecording ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 10, weight: .medium))
+                    // Pulsing inner glow
+                    Circle()
+                        .fill(glowColor.opacity(0.12))
+
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(glowColor)
+                        .scaleEffect(0.8 + 0.2 * chargeProgress)
+                } else {
+                    Circle()
+                        .stroke(glowColor, lineWidth: 1.5)
+                        .shadow(color: glowColor.opacity(0.9), radius: 6)
+                        .shadow(color: glowColor.opacity(0.5), radius: 12)
+
+                    Circle()
+                        .fill(glowColor.opacity(0.08))
+
+                    if appState.isTranscribing {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(0.5)
+                            .tint(glowColor)
+                    } else {
+                        Image(systemName: appState.isRecording ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(glowColor)
+                    }
                 }
             }
         }
         .buttonStyle(.plain)
         .frame(width: 28, height: 28)
-        .opacity(appState.isRecording ? 1.0 : 0.65)
+        .opacity(isCharging || appState.isRecording ? 1.0 : 0.65)
         .help(appState.isRecording ? "Stop recording" : "Start recording (Speakr)")
+        .onChange(of: appState.isRecording) { wasRecording, isNow in
+            if isNow && !wasRecording {
+                startCharge()
+            } else if !isNow {
+                isCharging = false
+                chargeComplete = false
+                chargeProgress = 0
+            }
+        }
+    }
+
+    private func startCharge() {
+        chargeProgress = 0
+        isCharging = true
+        chargeComplete = false
+        withAnimation(.easeInOut(duration: chargeDuration)) {
+            chargeProgress = 1.0
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + chargeDuration) {
+            isCharging = false
+            chargeComplete = true
+        }
     }
 }
 
