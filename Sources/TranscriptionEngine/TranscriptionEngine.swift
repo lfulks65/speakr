@@ -209,6 +209,7 @@ public final class TranscriptionEngine: TranscriptionEngineProtocol {
                 options.language = lang
             }
             options.usePrefillPrompt = true
+            options.suppressBlank = true
 
             // `transcribe` returns WhisperKit's own [TranscriptionResult] class.
             // We intentionally avoid annotating the type to sidestep the name
